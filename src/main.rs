@@ -5,7 +5,19 @@ use hidapi::{HidApi, HidDevice};
 use std::error::Error;
 use std::str::FromStr;
 
-const DEVICE_INFO: (u16, u16, u16, u16) = (0x048d, 0xc965, 0xff89, 0x00cc);
+const KNOWN_DEVICES: [(u16, u16, u16, u16); 11] = [
+    (0x048d, 0xc995, 0xff89, 0x00cc), // 2024 Pro
+    (0x048d, 0xc994, 0xff89, 0x00cc), // 2024
+    (0x048d, 0xc993, 0xff89, 0x00cc), // 2024 LOQ
+    (0x048d, 0xc985, 0xff89, 0x00cc), // 2023 Pro
+    (0x048d, 0xc984, 0xff89, 0x00cc), // 2023
+    (0x048d, 0xc983, 0xff89, 0x00cc), // 2023 LOQ
+    (0x048d, 0xc975, 0xff89, 0x00cc), // 2022
+    (0x048d, 0xc973, 0xff89, 0x00cc), // 2022 Ideapad
+    (0x048d, 0xc965, 0xff89, 0x00cc), // 2021
+    (0x048d, 0xc963, 0xff89, 0x00cc), // 2021 Ideapad
+    (0x048d, 0xc955, 0xff89, 0x00cc), // 2020
+];
 
 fn parse_bytes_arg(arg: &str) -> Result<Vec<u8>, <u8 as FromStr>::Err> {
     arg.split(',').map(|b| b.parse::<u8>()).collect()
@@ -94,7 +106,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             for i in 5 .. 17 {
                 payload[i] = rgb[i-5];
             }
-            if sub == "zstatic" { 0x01 } else { 0x03 /*breath*/ }
+            if sub == "zstatic" { 0x01 } else { 0x03 /*zbreath*/ }
         },
         Some("smooth") => 0x06,
         Some("lwave") => { payload[19] = 0x1; 0x04 }
@@ -112,12 +124,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let api: HidApi = HidApi::new()?;
 
-    let info = api.device_list()
-        .find(|d| (d.vendor_id(), d.product_id(), d.usage_page(), d.usage()) == DEVICE_INFO)
-        .ok_or("Error: Couldn't find device")?;
+    let info = api
+        .device_list()
+        .find(|d| {
+            let quad = (d.vendor_id(), d.product_id(), d.usage_page(), d.usage());
+            KNOWN_DEVICES.iter().any(|known| quad == *known)
+        })
+        .ok_or("Error: Couldn't find a known device")?;
 
     let device: HidDevice = info.open_device(&api)?;
-
     device.send_feature_report(&payload[..])?;
+
     Ok(())
 }
